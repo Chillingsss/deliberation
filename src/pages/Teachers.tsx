@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
+// Removed unused Checkbox import
 import {
   Dialog,
   DialogContent,
@@ -23,15 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Plus, Search, User, Edit, Eye, Loader2, Upload, Download, Settings, ArrowUpDown, ChevronLeft, ChevronRight, Filter, BarChart3 } from "lucide-react";
+// Removed unused DropdownMenu imports
+import { Plus, Search, User, Edit, Eye, Loader2, Upload, Download, BarChart3, ChevronLeft, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ZoneBadge from "@/components/ZoneBadge";
 import CategoryBadge from "@/components/CategoryBadge";
@@ -77,7 +70,7 @@ const Teachers = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [academicYear, setAcademicYear] = useState("2024-2025");
   const [semester, setSemester] = useState("1st");
-  const [selectedPeriod, setSelectedPeriod] = useState("P1");
+  const [selectedPeriod, setSelectedPeriod] = useState("All");
   const [formData, setFormData] = useState({
     teacher_id: "",
     first_name: "",
@@ -91,9 +84,7 @@ const Teachers = () => {
     notes: ""
   });
   
-  // New flexible state
-  const [sortField, setSortField] = useState<keyof Teacher | null>(null);
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [visibleColumns, setVisibleColumns] = useState({
@@ -127,7 +118,16 @@ const Teachers = () => {
 
   useEffect(() => {
     fetchTeachers();
-  }, []);
+  }, [academicYear, semester]);
+
+  useEffect(() => {
+    setVisibleColumns(prev => ({
+      ...prev,
+      p1_performance: selectedPeriod === 'All' || selectedPeriod === 'P1',
+      p2_performance: selectedPeriod === 'All' || selectedPeriod === 'P2',
+      p3_performance: selectedPeriod === 'All' || selectedPeriod === 'P3',
+    }));
+  }, [selectedPeriod]);
 
   const calcPercent = (failed?: number | string, enrolled?: number | string) => {
     const f = Number(failed);
@@ -167,10 +167,12 @@ const Teachers = () => {
   const fetchTeachers = async () => {
     try {
       setLoading(true);
-      const response = await fetch(apiUrl('teachers.php'));
+      const params = new URLSearchParams();
+      if (academicYear) params.set('school_year', academicYear);
+      if (semester) params.set('semester', semester);
+      params.set('recompute', '0');
+      const response = await fetch(apiUrl(`teachers.php?${params.toString()}`));
       const data = await response.json();
-      
-      // Ensure data is an array
       if (Array.isArray(data)) {
         setTeachers(data);
       } else {
@@ -205,55 +207,46 @@ const Teachers = () => {
     const matchesDepartment = !filters.department || teacher.department === filters.department;
     const matchesZone = !filters.zone || teacher.zone === filters.zone;
     const matchesStatus = !filters.status || teacher.status === filters.status;
+
+    const periodMatches = selectedPeriod === 'All' ? true : (() => {
+      const base = selectedPeriod.toLowerCase();
+      const failedVal = (teacher as any)[`${base}_failed`];
+      const percentVal = (teacher as any)[`${base}_percent`];
+      const categoryVal = (teacher as any)[`${base}_category`];
+      return (failedVal !== undefined && failedVal !== null) ||
+             (percentVal !== undefined && percentVal !== null) ||
+             (typeof categoryVal === 'string' && categoryVal.trim() !== '');
+    })();
     
-    return matchesSearch && matchesDepartment && matchesZone && matchesStatus;
+    return matchesSearch && matchesDepartment && matchesZone && matchesStatus && periodMatches;
   });
 
-  // Sorting logic
-  const sortedTeachers = [...filteredTeachers].sort((a, b) => {
-    if (!sortField) return 0;
-    
-    let aValue = a[sortField];
-    let bValue = b[sortField];
-    
-    // Handle special cases for sorting
-    if (sortField === 'first_name' || sortField === 'last_name') {
-      aValue = `${a.first_name} ${a.last_name}`.toLowerCase();
-      bValue = `${b.first_name} ${b.last_name}`.toLowerCase();
-    }
-    
-    if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-    if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
+  // No interactive sorting on Teachers table; keep filtered order
+  const sortedTeachers = filteredTeachers;
 
-  // Pagination logic
-  const totalPages = Math.ceil(sortedTeachers.length / itemsPerPage);
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(sortedTeachers.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedTeachers = sortedTeachers.slice(startIndex, startIndex + itemsPerPage);
+
+  // Handlers for pagination
+  const handlePageChange = (page: number) => {
+    const clamped = Math.min(Math.max(page, 1), totalPages);
+    setCurrentPage(clamped);
+  };
+
+  const handleItemsPerPageChange = (value: string) => {
+    const next = Number(value) || 10;
+    setItemsPerPage(next);
+    setCurrentPage(1);
+  };
 
   // Get unique values for filters
   const departments = [...new Set(teachers.map(t => t.department))];
   const zones = [...new Set(teachers.map(t => t.zone))];
   const statuses = [...new Set(teachers.map(t => t.status))];
 
-  const handleSort = (field: keyof Teacher) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handleItemsPerPageChange = (value: string) => {
-    setItemsPerPage(Number(value));
-    setCurrentPage(1);
-  };
+  // Removed obsolete sort and pagination handlers
 
   // P1, P2, and P3 are always available
 
@@ -393,10 +386,26 @@ const Teachers = () => {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      toast({
+        title: "No file selected",
+        description: "Please choose a CSV file to upload.",
+        variant: "destructive"
+      });
+      return;
+    }
 
-    // Validate file type - only CSV supported
-    const allowedTypes = ['text/csv'];
+    if (file.size <= 0) {
+      toast({
+        title: "Empty file",
+        description: "The selected file appears to be empty (0 bytes).",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate file type - only CSV supported for typed import
+    const allowedTypes = ['text/csv', 'text/plain', 'application/csv', 'application/octet-stream'];
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
 
     if (fileExtension === 'xlsx' || fileExtension === 'xls') {
@@ -437,7 +446,7 @@ const Teachers = () => {
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', file); // must match PHP key
       formData.append('type', 'teachers');
 
       // Simulate progress
@@ -459,24 +468,29 @@ const Teachers = () => {
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      const result = await response.json();
+      let result: any = {};
+      try {
+        result = await response.json();
+      } catch (e) {
+        result = { success: false, message: 'Invalid JSON response from server' };
+      }
 
       if (response.ok && result.success) {
+        const extra = result.filename && result.filesize ? ` (saved as ${result.filename}, ${result.filesize} bytes)` : '';
         toast({
           title: "Upload successful",
-          description: result.message,
+          description: `${result.message}${extra}`,
         });
-        // Refresh the teachers list
         fetchTeachers();
       } else {
         // Handle Excel file error with instructions
-        if (result.instructions) {
+        if (Array.isArray(result.instructions)) {
           const instructionText = result.instructions.join('\n');
           toast({
             title: "Excel file not supported",
             description: (
               <div className="space-y-2">
-                <p>{result.error}</p>
+                <p>{result.message}</p>
                 <div className="text-sm">
                   <p className="font-medium">Instructions:</p>
                   <pre className="whitespace-pre-wrap text-xs">{instructionText}</pre>
@@ -487,10 +501,26 @@ const Teachers = () => {
             duration: 10000
           });
         } else {
+          const backendMessage = result?.message || 'Failed to upload file';
+          const errorList = Array.isArray(result?.errors)
+            ? result.errors.slice(0, 8).map((e: any) => typeof e === 'string' ? e : JSON.stringify(e))
+            : [];
+
           toast({
             title: "Upload failed",
-            description: result.error || "Failed to upload file",
-            variant: "destructive"
+            description: (
+              <div className="space-y-2">
+                <p>{backendMessage}</p>
+                {errorList.length > 0 && (
+                  <div className="text-sm">
+                    <p className="font-medium">Details:</p>
+                    <pre className="whitespace-pre-wrap text-xs">{errorList.join('\n')}</pre>
+                  </div>
+                )}
+              </div>
+            ),
+            variant: "destructive",
+            duration: errorList.length > 0 ? 12000 : 6000
           });
         }
       }
@@ -509,8 +539,8 @@ const Teachers = () => {
   const downloadTemplate = () => {
     let csvContent = "FacultyNo,FacultyName,EnrolledStudents,P1_Failed,P1_Percent,P1_Category,P2_Failed,P2_Percent,P2_Category";
     let sampleData = "14-007-F,ADORMIE CORRALES MACARIO,184,18,9.78,GREEN (0.01%-10%),,,\n" +
-      "24-219-F,ALEXIS VIADOR LAROSA,307,9,2.93,GREEN (0.01%-10%),,,\n" +
-      "24-077-F,AMBER ANN ACAYLAR,201,16,7.96,GREEN (0.01%-10%),,,";
+    "24-219-F,ALEXIS VIADOR LAROSA,307,9,2.93,GREEN (0.01%-10%),,,\n" +
+    "24-077-F,AMBER ANN ACAYLAR,201,16,7.96,GREEN (0.01%-10%),,,";
     
     // Add P3 only for 2nd semester
     if (semester === "2nd") {
@@ -531,21 +561,21 @@ const Teachers = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold">Teachers</h1>
           <p className="text-muted-foreground">
             Manage faculty records and performance evaluation
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 w-full md:w-auto justify-end">
           <Button variant="default" onClick={() => navigate('/reports')}>
             <BarChart3 className="h-4 w-4 mr-2" />
-            Reports
+            <span className="hidden sm:inline">Reports</span>
           </Button>
           <Button variant="outline" onClick={downloadTemplate}>
             <Download className="h-4 w-4 mr-2" />
-            Download Template
+            <span className="hidden sm:inline">Download Template</span>
           </Button>
           <div className="relative">
             <input
@@ -558,18 +588,18 @@ const Teachers = () => {
             />
             <Button disabled={isUploading}>
               <Upload className="h-4 w-4 mr-2" />
-              {isUploading ? `Uploading... ${uploadProgress}%` : "Upload CSV"}
+              <span className="hidden sm:inline">{isUploading ? `Uploading... ${uploadProgress}%` : "Upload CSV"}</span>
             </Button>
           </div>
           <Button onClick={handleAdd}>
             <Plus className="h-4 w-4 mr-2" />
-            Add Teacher
+            <span className="hidden sm:inline">Add Teacher</span>
           </Button>
         </div>
       </div>
 
       {/* Academic Year and Semester Selectors */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Academic Year:</span>
           <Select value={academicYear} onValueChange={setAcademicYear}>
@@ -578,8 +608,8 @@ const Teachers = () => {
             </SelectTrigger>
             <SelectContent>
               {academicYears.map((year) => (
-                <SelectItem key={year} value={year}>
-                  {year}
+                <SelectItem key={year} value={String(year)}>
+                  {String(year)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -610,6 +640,7 @@ const Teachers = () => {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="All">All</SelectItem>
               <SelectItem value="P1">P1</SelectItem>
               <SelectItem value="P2">P2</SelectItem>
               <SelectItem value="P3">P3</SelectItem>
@@ -621,47 +652,10 @@ const Teachers = () => {
       {/* Search and Filters */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Search & Filter</CardTitle>
-              <CardDescription>
-                Find teachers by name, ID, or department
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Filters
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Settings className="h-4 w-4 mr-2" />
-                    Columns
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuLabel>Toggle columns</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {Object.entries(visibleColumns).map(([key, visible]) => (
-                    <DropdownMenuCheckboxItem
-                      key={key}
-                      checked={visible}
-                      onCheckedChange={(checked) =>
-                        setVisibleColumns(prev => ({ ...prev, [key]: checked }))
-                      }
-                    >
-                      {key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-          </div>
+          <CardTitle>Search & Filter</CardTitle>
+          <CardDescription>
+            Find teachers by name or ID
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -679,12 +673,12 @@ const Teachers = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
                 <div>
                   <Label htmlFor="department-filter">Department</Label>
-                  <Select value={filters.department} onValueChange={(value) => setFilters(prev => ({ ...prev, department: value }))}>
+                  <Select value={filters.department} onValueChange={(value) => setFilters(prev => ({ ...prev, department: value === '__ALL_DEPARTMENTS__' ? '' : value }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="All departments" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All departments</SelectItem>
+                      <SelectItem value="__ALL_DEPARTMENTS__">All departments</SelectItem>
                       {departments.map(dept => (
                         <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                       ))}
@@ -693,12 +687,12 @@ const Teachers = () => {
                 </div>
                 <div>
                   <Label htmlFor="zone-filter">Zone</Label>
-                  <Select value={filters.zone} onValueChange={(value) => setFilters(prev => ({ ...prev, zone: value }))}>
+                  <Select value={filters.zone} onValueChange={(value) => setFilters(prev => ({ ...prev, zone: value === '__ALL_ZONES__' ? '' : value }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="All zones" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All zones</SelectItem>
+                      <SelectItem value="__ALL_ZONES__">All zones</SelectItem>
                       {zones.map(zone => (
                         <SelectItem key={zone} value={zone}>
                           {zone.charAt(0).toUpperCase() + zone.slice(1)}
@@ -709,12 +703,12 @@ const Teachers = () => {
                 </div>
                 <div>
                   <Label htmlFor="status-filter">Status</Label>
-                  <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                  <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value === '__ALL_STATUSES__' ? '' : value }))}>
                     <SelectTrigger>
                       <SelectValue placeholder="All statuses" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All statuses</SelectItem>
+                      <SelectItem value="__ALL_STATUSES__">All statuses</SelectItem>
                       {statuses.map(status => (
                         <SelectItem key={status} value={status}>{status}</SelectItem>
                       ))}
@@ -730,127 +724,75 @@ const Teachers = () => {
       {/* Teachers Table */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Faculty List</CardTitle>
-              <CardDescription>
-                {sortedTeachers.length} teachers found
-                {sortedTeachers.length !== teachers.length && ` (filtered from ${teachers.length} total)`}
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <Label htmlFor="items-per-page" className="text-sm">Show:</Label>
-              <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="5">5</SelectItem>
-                  <SelectItem value="10">10</SelectItem>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+          <CardTitle>Faculty List</CardTitle>
+          <CardDescription>
+            {sortedTeachers.length} teachers found
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+            {/* Horizontal scroll only for this card content */}
+            <div className="w-full max-w-full overflow-x-auto">
+            <Table className="min-w-full border-collapse table-fixed">
               <TableHeader>
                 <TableRow>
                   {visibleColumns.teacher_id && (
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSort('teacher_id')}
-                    >
-                      <div className="flex items-center gap-1">
-                        Faculty Number
-                        <ArrowUpDown className="h-4 w-4" />
-                      </div>
-                    </TableHead>
+                    <TableHead className="w-40 whitespace-nowrap text-left">Faculty Number</TableHead>
                   )}
                   {visibleColumns.name && (
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSort('first_name')}
-                    >
-                      <div className="flex items-center gap-1">
-                        Faculty Name
-                        <ArrowUpDown className="h-4 w-4" />
-                      </div>
-                    </TableHead>
+                    <TableHead className="w-56 whitespace-nowrap text-left">Faculty Name</TableHead>
                   )}
                   {visibleColumns.department && (
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSort('department')}
-                    >
-                      <div className="flex items-center gap-1">
-                        Department
-                        <ArrowUpDown className="h-4 w-4" />
-                      </div>
-                    </TableHead>
+                    <TableHead className="w-44 whitespace-nowrap text-left">Department</TableHead>
                   )}
                   {visibleColumns.enrolled && (
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSort('enrolled_students')}
-                    >
-                      <div className="flex items-center gap-1">
-                        Number of Enrolled Students
-                        <ArrowUpDown className="h-4 w-4" />
-                      </div>
-                    </TableHead>
+                    <TableHead className="w-64 whitespace-nowrap text-left">Number of Enrolled Students</TableHead>
                   )}
                   {visibleColumns.p1_performance && (
                     <>
-                      <TableHead>P1 Number of Failed</TableHead>
-                      <TableHead>P1 % of Failed</TableHead>
-                      <TableHead>P1 Categorization</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P1 Number of Failed</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P1 % of Failed</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P1 Categorization</TableHead>
                     </>
                   )}
                   {visibleColumns.p2_performance && (
                     <>
-                      <TableHead>P2 Number of Failed</TableHead>
-                      <TableHead>P2 % of Failed</TableHead>
-                      <TableHead>P2 Categorization</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P2 Number of Failed</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P2 % of Failed</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P2 Categorization</TableHead>
                     </>
                   )}
                   {visibleColumns.p3_performance && (
                     <>
-                      <TableHead>P3 Number of Failed</TableHead>
-                      <TableHead>P3 % of Failed</TableHead>
-                      <TableHead>P3 Categorization</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P3 Number of Failed</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P3 % of Failed</TableHead>
+                      <TableHead className="w-44 whitespace-nowrap text-left">P3 Categorization</TableHead>
                     </>
                   )}
                   {visibleColumns.zone && (
-                    <TableHead 
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleSort('zone')}
-                    >
-                      <div className="flex items-center gap-1">
-                        Zone
-                        <ArrowUpDown className="h-4 w-4" />
-                      </div>
-                    </TableHead>
+                    <TableHead className="w-28 whitespace-nowrap text-left">Zone</TableHead>
                   )}
                   {visibleColumns.actions && (
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="w-32 whitespace-nowrap text-left">Actions</TableHead>
                   )}
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {paginatedTeachers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length} className="text-center text-muted-foreground">
+                      No records found for this period
+                    </TableCell>
+                  </TableRow>
+                )}
                 {paginatedTeachers.map((teacher) => (
                   <TableRow key={teacher.id}>
                     {visibleColumns.teacher_id && (
-                      <TableCell className="font-medium">
+                      <TableCell className="w-40 font-medium whitespace-nowrap">
                         {teacher.teacher_id}
                       </TableCell>
                     )}
                     {visibleColumns.name && (
-                      <TableCell>
+                      <TableCell className="w-56 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <User className="h-4 w-4 text-muted-foreground" />
                           <span className="truncate max-w-[200px]">
@@ -860,14 +802,14 @@ const Teachers = () => {
                       </TableCell>
                     )}
                     {visibleColumns.department && (
-                      <TableCell>
+                      <TableCell className="w-44 whitespace-nowrap">
                         <Badge variant="outline" className="truncate max-w-[150px]">
                           {teacher.department}
                         </Badge>
                       </TableCell>
                     )}
                     {visibleColumns.enrolled && (
-                      <TableCell>
+                      <TableCell className="w-64 whitespace-nowrap">
                         <div className="text-sm font-medium">
                           {Number(teacher.enrolled_students) || 0}
                         </div>
@@ -875,10 +817,10 @@ const Teachers = () => {
                     )}
                     {visibleColumns.p1_performance && (
                       <>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           <div className="text-sm">{Number(teacher.p1_failed) || 0}</div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           <div className="text-sm text-muted-foreground">
                             {(() => {
                               const pct = percentFromData(teacher.p1_percent, teacher.p1_failed, teacher.enrolled_students);
@@ -887,7 +829,7 @@ const Teachers = () => {
                             })()}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           {(() => {
                             const pct = percentFromData(teacher.p1_percent, teacher.p1_failed, teacher.enrolled_students);
                             const cat = pct !== null ? categoryFromPercentValue(pct) : (teacher.p1_category || 'N/A');
@@ -898,10 +840,10 @@ const Teachers = () => {
                     )}
                     {visibleColumns.p2_performance && (
                       <>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           <div className="text-sm">{Number(teacher.p2_failed) || 0}</div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           <div className="text-sm text-muted-foreground">
                             {(() => {
                               const pct = percentFromData(teacher.p2_percent, teacher.p2_failed, teacher.enrolled_students);
@@ -910,7 +852,7 @@ const Teachers = () => {
                             })()}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           {(() => {
                             const pct = percentFromData(teacher.p2_percent, teacher.p2_failed, teacher.enrolled_students);
                             const cat = pct !== null ? categoryFromPercentValue(pct) : (teacher.p2_category || 'N/A');
@@ -921,10 +863,10 @@ const Teachers = () => {
                     )}
                     {visibleColumns.p3_performance && (
                       <>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           <div className="text-sm">{Number(teacher.p3_failed) || 0}</div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           <div className="text-sm text-muted-foreground">
                             {(() => {
                               const pct = percentFromData(teacher.p3_percent, teacher.p3_failed, teacher.enrolled_students);
@@ -933,7 +875,7 @@ const Teachers = () => {
                             })()}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-44 whitespace-nowrap">
                           {(() => {
                             const pct = percentFromData(teacher.p3_percent, teacher.p3_failed, teacher.enrolled_students);
                             const cat = pct !== null ? categoryFromPercentValue(pct) : (teacher.p3_category || 'N/A');
@@ -943,12 +885,12 @@ const Teachers = () => {
                       </>
                     )}
                     {visibleColumns.zone && (
-                      <TableCell>
+                      <TableCell className="w-28 whitespace-nowrap">
                         <ZoneBadge zone={teacher.zone} />
                       </TableCell>
                     )}
                     {visibleColumns.actions && (
-                      <TableCell>
+                      <TableCell className="w-32 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <Button variant="ghost" size="sm" onClick={() => handleEdit(teacher)}>
                             <Edit className="h-4 w-4 mr-1" />
@@ -965,72 +907,41 @@ const Teachers = () => {
                 ))}
               </TableBody>
             </Table>
-          </div>
-          
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <div className="text-sm text-muted-foreground">
-                Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, sortedTeachers.length)} of {sortedTeachers.length} teachers
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    const page = i + 1;
-                    return (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handlePageChange(page)}
-                        className="w-8 h-8 p-0"
-                      >
-                        {page}
-                      </Button>
-                    );
-                  })}
-                  {totalPages > 5 && (
-                    <>
-                      <span className="text-muted-foreground">...</span>
-                      <Button
-                        variant={currentPage === totalPages ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handlePageChange(totalPages)}
-                        className="w-8 h-8 p-0"
-                      >
-                        {totalPages}
-                      </Button>
-                    </>
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
             </div>
-          )}
         </CardContent>
+        {/* Pagination Controls */}
+        <div className="flex items-center justify-between px-6 pb-6">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="itemsPerPage" className="text-sm">Rows per page:</Label>
+            <Select value={String(itemsPerPage)} onValueChange={handleItemsPerPageChange}>
+              <SelectTrigger id="itemsPerPage" className="w-24 h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage === 1}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Page {currentPage} of {totalPages}
+            </span>
+            <Button variant="outline" size="sm" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       </Card>
 
       {/* Department Stats */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 aspect-[16/9]">
             <div className="text-2xl font-bold">
               {new Set((teachers || []).map(t => t.department)).size}
             </div>
@@ -1039,7 +950,7 @@ const Teachers = () => {
         </Card>
         
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 aspect-[16/9]">
             <div className="text-2xl font-bold">
               {(teachers || []).filter(t => t.zone === "green").length}
             </div>
@@ -1048,7 +959,7 @@ const Teachers = () => {
         </Card>
         
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 aspect-[16/9]">
             <div className="text-2xl font-bold">
               {(teachers || []).filter(t => t.zone === "red").length}
             </div>

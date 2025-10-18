@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../models/User.php';
 
-header('Content-Type: application/json');
+require_once __DIR__ . '/../api/headers.php';
 
 function body(): array {
     $raw = file_get_contents('php://input') ?: '';

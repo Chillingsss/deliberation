@@ -7,11 +7,11 @@ class DatabaseConnection {
     private PDO $pdo;
 
     public function __construct() {
-        $host = getenv('DB_HOST') ?: '127.0.0.1';
+        $host = getenv('DB_HOST') ?: 'localhost';
         $port = getenv('DB_PORT') ?: '3306';
-        $db   = getenv('DB_NAME') ?: 'deliberation';
-        $user = getenv('DB_USER') ?: 'root';
-        $pass = getenv('DB_PASS') ?: '';
+        $db   = getenv('DB_NAME') ?: 'u294866510_deliberation';
+        $user = getenv('DB_USER') ?: 'u294866510_deliberation';
+        $pass = getenv('DB_PASS') ?: '@Deliberation12';
         $charset = 'utf8mb4';
 
         $dsn = "mysql:host={$host};port={$port};dbname={$db};charset={$charset}";

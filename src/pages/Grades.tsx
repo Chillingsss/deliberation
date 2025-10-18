@@ -433,8 +433,8 @@ const Grades = () => {
             </SelectTrigger>
             <SelectContent>
               {academicYears.map((year) => (
-                <SelectItem key={year} value={year}>
-                  {year}
+                <SelectItem key={year} value={String(year)}>
+                  {String(year)}
                 </SelectItem>
               ))}
             </SelectContent>

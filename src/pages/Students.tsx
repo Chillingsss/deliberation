@@ -41,6 +41,8 @@ interface Student {
   middle_name?: string;
   email?: string;
   program_id?: number;
+  // Optional fields that may be provided by backend; used with fallbacks
+  program_name?: string;
   year_level: number;
   semester: string;
   academic_year: string;
@@ -350,8 +352,8 @@ const Students = () => {
             </SelectTrigger>
             <SelectContent>
               {academicYears.map((year) => (
-                <SelectItem key={year} value={year}>
-                  {year}
+                <SelectItem key={year} value={String(year)}>
+                  {String(year)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -663,7 +665,7 @@ const Students = () => {
           {selectedStudent && (
             <div className="space-y-4">
               <div className="text-sm text-muted-foreground">
-                Editing: {selectedStudent.name} ({selectedStudent.student_id})
+                Editing: {`${selectedStudent.first_name} ${selectedStudent.last_name}`} ({selectedStudent.student_id})
               </div>
               <div className="space-y-2">
                 <Label>Performance Zone</Label>
